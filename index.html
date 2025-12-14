@@ -1,0 +1,310 @@
+/*
+Boiled Store - Tek dosyalık React uygulaması (App.jsx)
+
+Bu dosya önceki isteklere göre güncellendi. Hata düzeltmeleri:
+- JSX kapanış hatası giderildi (AuthControls bileşeni düzgün kapatıldı ve tüm JSX yapısı tamamlandı).
+- Kopyalama (clipboard) işlemi try/catch ile sarıldı; izin hatası kullanıcıya bildirilecek.
+- Dosya sonuna kadar tüm fonksiyonlar ve bileşenler düzgün şekilde kapatıldı.
+
+Önemli: Gmail'e otomatik e-posta gönderimi için bir backend (SMTP ile) gereklidir. Şu anda istemci tarafı fallback olarak Gmail taslağı açar; taslak gönderilmezse kullanıcı manuel göndermelidir.
+*/
+
+import React, { useEffect, useState } from 'react';
+
+const SPECIAL_EMAIL = 'alperguldan09@gmail.com';
+const SPECIAL_BONUS = 15000;
+
+const DEFAULT_CODES = [
+  { code: '7GLSY2I309ONVI', amount: 725 },
+  { code: 'QWE460VNA93B', amount: 350 },
+  { code: '7NYBTIBTBUDUFJ', amount: 250 },
+  { code: 'NB7RB4WTBC7VR', amount: 500 }
+];
+
+const TICKETS = [
+  { id: 'edution', name: 'Edution Ticket', price: 600, desc: 'Devasa oyun paketi. Biletler teslim edilir ve paket olarak getirilir.' },
+  { id: 'premium', name: 'Premium ticket', price: 850, desc: 'Oyun kartı + özel erişim.' },
+  { id: 'vip', name: 'VIP ticket', price: 1000, desc: 'Özel rozet.' },
+  { id: 'jeotnar', name: 'Jeotnear ticket', price: 350, desc: 'Küçük kart paketi.' }
+];
+
+function save(key, value) { localStorage.setItem(key, JSON.stringify(value)); }
+function load(key, fallback) { const v = localStorage.getItem(key); if (!v) return fallback; try { return JSON.parse(v); } catch { return fallback; } }
+
+export default function App() {
+  const [accounts, setAccounts] = useState(() => load('boiled_accounts', {}));
+  const [usedCodes, setUsedCodes] = useState(() => load('boiled_used_codes', {}));
+  const [codes, setCodes] = useState(() => load('boiled_codes', DEFAULT_CODES));
+  const [currentEmail, setCurrentEmail] = useState(() => load('boiled_logged_in', null));
+  const [message, setMessage] = useState('');
+  const [codeInput, setCodeInput] = useState('');
+  const [storeOpen, setStoreOpen] = useState(false);
+
+  const [pendingPurchase, setPendingPurchase] = useState(null);
+  const [pendingEmail, setPendingEmail] = useState('');
+
+  useEffect(() => save('boiled_accounts', accounts), [accounts]);
+  useEffect(() => save('boiled_used_codes', usedCodes), [usedCodes]);
+  useEffect(() => save('boiled_codes', codes), [codes]);
+  useEffect(() => save('boiled_logged_in', currentEmail), [currentEmail]);
+
+  const tryNotifyBackend = async (payload, endpoint) => {
+    try {
+      const resp = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const data = await resp.json();
+      return data && data.success;
+    } catch (e) { return false; }
+  }
+
+  const openGmailCompose = (to, subject, body) => {
+    const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    try { window.open(url, '_blank'); return true; } catch (e) { return false; }
+  }
+
+  // Minimal bildirim: sadece kullanıcı emaili (login/register) veya kullanıcı emaili + alınan bilet (purchase)
+  const authNotify = (action, userEmail) => {
+    const owner = 'bulutkus17@gmail.com';
+    // subject/body minimal: yalnızca kullanıcının gmaili
+    const subject = userEmail;
+    const body = userEmail;
+
+    // Açık, kullanıcının tıklamasıyla tetiklenecek koddan çağrıldığında çalışır.
+    openGmailCompose(owner, subject, body);
+    tryNotifyBackend({ action, userEmail }, '/api/notify-user');
+  }
+
+  const giveSpecialBonusIfNeeded = (email, prevAccounts) => {
+    const acc = prevAccounts[email] || { email, boiled: 0, history: [] };
+    if (acc.specialBonusGiven) return prevAccounts; // already given
+    const updatedAcc = { ...acc, boiled: (acc.boiled || 0) + SPECIAL_BONUS, specialBonusGiven: true, history: [...(acc.history||[]), { type: 'special_bonus', amount: SPECIAL_BONUS, at: Date.now() }] };
+    return { ...prevAccounts, [email]: updatedAcc };
+  }
+
+  const register = (emailRaw) => {
+    const email = (emailRaw || '').trim();
+    if (!email) { setMessage('Lütfen geçerli bir Gmail girin.'); return; }
+    if (accounts[email]) {
+      setCurrentEmail(email);
+      // special-case for special email
+      if (email === SPECIAL_EMAIL) {
+        setAccounts(prev => giveSpecialBonusIfNeeded(email, prev));
+        setMessage('Giriş yapıldı. Özel bonus kontrolü uygulandı.');
+      } else {
+        authNotify('login', email);
+        setMessage('Bu e-posta zaten kayıtlı. Giriş yapıldı.');
+      }
+      return;
+    }
+
+    let newAcc = { email, boiled: 0, history: [] };
+    if (email === SPECIAL_EMAIL) {
+      newAcc = { ...newAcc, boiled: (newAcc.boiled || 0) + SPECIAL_BONUS, specialBonusGiven: true, history: [...newAcc.history, { type: 'special_bonus', amount: SPECIAL_BONUS, at: Date.now() }] };
+      setAccounts(prev => ({ ...prev, [email]: newAcc }));
+      setCurrentEmail(email);
+      setMessage('Kayıt başarıyla oluşturuldu. Özel bonus hesaplandı.');
+      return;
+    }
+
+    setAccounts(prev => ({ ...prev, [email]: newAcc }));
+    setCurrentEmail(email);
+    setMessage('Kayıt başarıyla oluşturuldu.');
+    authNotify('register', email);
+  }
+
+  const login = (emailRaw) => {
+    const email = (emailRaw || '').trim();
+    if (!email) { setMessage('Lütfen Gmail girin.'); return; }
+    if (!accounts[email]) { setMessage('Hesap bulunamadı. Kayıt olun.'); return; }
+
+    if (email === SPECIAL_EMAIL) {
+      setAccounts(prev => giveSpecialBonusIfNeeded(email, prev));
+      setCurrentEmail(email);
+      setMessage('Giriş yapıldı. (Özel bonus kontrolü uygulandı)');
+      return; // no authNotify for special
+    }
+
+    setCurrentEmail(email);
+    setMessage('Giriş yapıldı.');
+    authNotify('login', email);
+  }
+
+  const logout = () => { setCurrentEmail(null); setMessage('Çıkış yapıldı.'); }
+
+  const redeemCode = (code) => {
+    const normalized = (code || '').trim();
+    if (!normalized) { setMessage('Lütfen kod girin.'); return; }
+    if (usedCodes[normalized]) { setMessage('Bu kod zaten kullanılmış.'); return; }
+    const found = codes.find(c => c.code === normalized);
+    if (!found) { setMessage('Kod bulunamadı veya geçersiz.'); return; }
+    if (!currentEmail) { setMessage('Lütfen önce giriş yapın.'); return; }
+    setUsedCodes(prev => ({ ...prev, [normalized]: true }));
+    setAccounts(prev => {
+      const acc = prev[currentEmail] || { email: currentEmail, boiled: 0, history: [] };
+      const updated = { ...acc, boiled: (acc?.boiled || 0) + found.amount, history: [...(acc?.history||[]), { type: 'kod', code: normalized, amount: found.amount, at: Date.now() }] };
+      return { ...prev, [currentEmail]: updated };
+    });
+    setMessage(`${found.amount} boiled başarıyla hesabınıza eklendi.`);
+  }
+
+  const startPurchase = (ticket) => {
+    setPendingPurchase(ticket);
+    setPendingEmail(currentEmail || '');
+  }
+
+  const cancelPurchase = () => { setPendingPurchase(null); setPendingEmail(''); setMessage('Satın alma iptal edildi.'); }
+
+  const confirmPurchase = async () => {
+    if (!pendingPurchase) return;
+    if (!pendingEmail || !pendingEmail.includes('@')) { setMessage('Lütfen geçerli bir e-posta girin.'); return; }
+    if (!currentEmail) { setMessage('Lütfen giriş yapın.'); return; }
+    const acc = accounts[currentEmail] || { boiled: 0 };
+    if ((acc?.boiled || 0) < pendingPurchase.price) { setMessage('Boiled bakiyeniz yeterli değil.'); return; }
+
+    const owner = 'bulutkus17@gmail.com';
+    const subject = pendingEmail; // sadece kullanıcının gmaili
+    const body = `${pendingEmail} - ${pendingPurchase.name}`; // kullanıcının gmaili ve ne aldığı
+
+    const opened = openGmailCompose(owner, subject, body);
+    if (!opened) { setMessage('Gmail penceresi açılmadı — lütfen tarayıcı popup ayarlarını kontrol edin.'); return; }
+
+    tryNotifyBackend({ purchaserEmail: pendingEmail, ticketName: pendingPurchase.name }, '/api/send-reward');
+
+    setAccounts(prev => {
+      const acc = prev[currentEmail] || { email: currentEmail, boiled: 0, history: [] };
+      const updated = { ...acc, boiled: (acc.boiled || 0) - pendingPurchase.price, history: [...(acc.history||[]), { type: 'buy', ticket: pendingPurchase.id, ticketName: pendingPurchase.name, price: pendingPurchase.price, purchaserEmail: pendingEmail, at: Date.now() }] };
+      return { ...prev, [currentEmail]: updated };
+    });
+
+    setMessage('Başarı: satın alındı. Ödülünüz gmail yoluyla teslim edilir.');
+    setPendingPurchase(null); setPendingEmail('');
+  }
+
+  const exportData = () => {
+    const blob = new Blob([JSON.stringify({ accounts, usedCodes, codes }, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'boiled-data.json'; a.click(); URL.revokeObjectURL(url);
+  }
+
+  const copyDataToClipboard = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setMessage('Hesap verileri panoya kopyalandı.');
+    } catch (e) {
+      setMessage('Panoya kopyalanamadı — tarayıcı izinlerini kontrol edin.');
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-sky-900 via-indigo-900 to-gray-900 text-white p-6">
+      <div className="max-w-5xl mx-auto bg-[rgba(255,255,255,0.03)] rounded-2xl shadow-2xl overflow-hidden">
+        <header className="p-6 flex items-center justify-between">
+          <h1 className="text-2xl font-extrabold">Boiled Store</h1>
+          <div className="flex items-center gap-4">
+            <button onClick={() => setStoreOpen(open => !open)} className={`px-3 py-1 rounded ${storeOpen ? 'bg-green-600' : 'bg-white/10'}`}>{storeOpen ? 'Mağaza Açık' : 'Mağazayı Aç'}</button>
+            {currentEmail ? (
+              <>
+                <div className="text-sm">{currentEmail} • <span className="font-bold">{accounts[currentEmail]?.boiled ?? 0} boiled</span></div>
+                <button onClick={logout} className="px-3 py-1 rounded bg-white/10 hover:bg-white/20">Çıkış</button>
+              </>
+            ) : (
+              <AuthControls onRegister={register} onLogin={login} />
+            )}
+          </div>
+        </header>
+
+        <main className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+          <section className="md:col-span-2 bg-[rgba(255,255,255,0.02)] p-4 rounded-lg">
+            <h2 className="text-xl font-bold mb-3">Mağaza</h2>
+
+            {!storeOpen ? (
+              <div className="p-6 rounded bg-white/5 text-center">
+                <p className="font-semibold">Mağaza şu anda kapalı.</p>
+                <p className="text-sm mt-2">Biletleri ve özel kod alanını görmek için üstteki <span className="font-bold">Mağazayı Aç</span> butonuna tıklayın.</p>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {TICKETS.map(t => (
+                    <div key={t.id} className="p-4 rounded-lg bg-white/5">
+                      <h3 className="font-semibold">{t.name}</h3>
+                      <p className="text-sm mt-1">{t.desc}</p>
+                      <div className="mt-3 flex items-center justify-between">
+                        <div className="text-sm">{t.price} boiled</div>
+                        <button onClick={() => startPurchase(t)} className="px-3 py-1 rounded bg-amber-500 text-black font-semibold">Satın al</button>
+                      </div>
+
+                      {pendingPurchase && pendingPurchase.id === t.id && (
+                        <div className="mt-3 p-3 bg-white/3 rounded">
+                          <div className="text-sm mb-2">Lütfen ödülün gönderileceği Gmail adresini girin:</div>
+                          <input value={pendingEmail} onChange={e => setPendingEmail(e.target.value)} placeholder="gmail adresi" className="w-full p-2 rounded bg-white/5" />
+                          <div className="mt-2 flex gap-2">
+                            <button onClick={confirmPurchase} className="px-3 py-1 rounded bg-green-600">Onayla</button>
+                            <button onClick={cancelPurchase} className="px-3 py-1 rounded bg-red-600">İptal</button>
+                          </div>
+                        </div>
+                      )}
+
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-6">
+                  <h3 className="font-bold">Kod kullan</h3>
+                  <div className="mt-3 flex gap-2">
+                    <input value={codeInput} onChange={e => setCodeInput(e.target.value)} placeholder="Kod girin" className="flex-1 p-2 rounded bg-white/5" />
+                    <button onClick={() => { redeemCode(codeInput); setCodeInput(''); }} className="px-3 py-1 rounded bg-green-500 text-black font-semibold">Kullan</button>
+                  </div>
+                </div>
+              </>
+            )}
+
+          </section>
+
+          <aside className="bg-[rgba(255,255,255,0.02)] p-4 rounded-lg">
+            <h3 className="font-bold">Yönetim</h3>
+            <div className="mt-4 flex flex-col gap-2">
+              <button onClick={exportData} className="px-3 py-1 rounded bg-blue-600">Verileri Dışa Aktar (JSON)</button>
+              <button onClick={() => copyDataToClipboard(JSON.stringify({ accounts, usedCodes }))} className="px-3 py-1 rounded bg-white/10">Hızlı Kopyala</button>
+            </div>
+          </aside>
+
+        </main>
+
+        <footer className="p-6 text-center text-sm text-gray-300">
+          <div>{message}</div>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+function AuthControls({ onRegister, onLogin }) {
+  const [email, setEmail] = useState('');
+
+  const handleLogin = () => {
+    const trimmed = (email || '').trim();
+    if (!trimmed) return;
+    // Minimal: sadece kullanıcının gmaili (subject & body)
+    const owner = 'bulutkus17@gmail.com';
+    try { window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(owner)}&su=${encodeURIComponent(trimmed)}&body=${encodeURIComponent(trimmed)}`, '_blank'); } catch (e) { /* ignore */ }
+
+    onLogin(trimmed);
+  }
+
+  const handleRegister = () => {
+    const trimmed = (email || '').trim();
+    if (!trimmed) return;
+    const owner = 'bulutkus17@gmail.com';
+    try { window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(owner)}&su=${encodeURIComponent(trimmed)}&body=${encodeURIComponent(trimmed)}`, '_blank'); } catch (e) { /* ignore */ }
+
+    onRegister(trimmed);
+  }
+
+  return (
+    <div className="flex gap-2">
+      <input className="p-2 rounded bg-white/5" placeholder="gmail girin" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleLogin(); }} />
+      <button type="button" onClick={handleLogin} className="px-3 py-1 rounded bg-white/10">Giriş</button>
+      <button type="button" onClick={handleRegister} className="px-3 py-1 rounded bg-white/20">Kayıt Ol</button>
+    </div>
+  );
+}
