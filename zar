@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Basit Üç Kişilik Zar Oyunu (Güncel)</title>
+  <style>
+    :root{--size:36px;--gap:10px}
+    *,*::before,*::after{box-sizing:border-box}
+    body{font-family:Inter,system-ui,Segoe UI,Arial;margin:20px;background:#f6f8fb;color:#0b1220}
+    h1{font-size:20px;margin-bottom:8px}
+    .board{display:flex;gap:36px;flex-wrap:wrap}
+    .track{display:flex;flex-direction:column;align-items:center;min-width:180px;padding:8px 6px;position:relative}
+    .squares{display:grid;grid-template-columns:repeat(10,var(--size));gap:var(--gap);max-width:calc(var(--size)*10 + var(--gap)*9);min-width:0;transition:transform .12s}
+    .track:nth-child(1) .squares{transform:translateX(0)}
+    .track:nth-child(2) .squares{transform:translateX(18px)}
+    .track:nth-child(3) .squares{transform:translateX(36px)}
+    .track:not(:last-child)::after{content:'';position:absolute;right:-18px;top:10px;bottom:10px;width:1px;background:linear-gradient(to bottom, rgba(2,6,23,0.04), rgba(2,6,23,0));pointer-events:none}
+    .square{width:var(--size);height:var(--size);display:flex;align-items:center;justify-content:center;border-radius:6px;background:#fff;border:1px solid #e2e8f0;box-shadow:0 1px 2px rgba(2,6,23,0.04);font-size:12px;font-weight:700;color:#0b1220;position:relative;padding:2px;overflow:visible}
+    .square .bomb{position:absolute;right:2px;top:2px;font-size:14px;line-height:1}
+    .tokens{position:absolute;left:3px;right:3px;bottom:3px;display:flex;gap:4px;justify-content:space-between;align-items:center;padding:0;margin:0}
+    .token{width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 2px rgba(2,6,23,0.12)}
+    .token.p1{background:#2563eb}
+    .token.p2{background:#f59e0b}
+    .token.p3{background:#10b981}
+    .controls{margin-top:14px;display:flex;gap:10px;align-items:center}
+    button{padding:10px 14px;border-radius:8px;border:0;background:#2563eb;color:#fff;font-weight:600;cursor:pointer}
+    button:disabled{opacity:0.5;cursor:not-allowed}
+    .info{margin-top:12px}
+    .status{padding:10px;background:#fff;border-radius:8px;border:1px solid #e6eefb;display:inline-block}
+    .log{margin-top:10px;max-height:180px;overflow:auto;background:#fff;padding:8px;border-radius:8px;border:1px solid #eee}
+    .small{font-size:13px;color:#374151}
+    .reset{background:#ef4444}
+    .die-wrap{display:flex;flex-direction:column;align-items:center;gap:8px;margin-left:6px}
+    .die{width:56px;height:56px;border-radius:10px;background:#fff;border:2px solid #e6eefb;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);padding:6px;box-shadow:0 6px 18px rgba(2,6,23,0.08);}
+    .pip{width:12px;height:12px;border-radius:50%;background:#0b1220;opacity:0;transform:scale(0.6);transition:opacity .12s, transform .12s}
+    .pip.show{opacity:1;transform:scale(1)}
+    .flash{position:fixed;inset:0;background:rgba(255,240,230,0.92);display:flex;align-items:center;justify-content:center;font-size:48px;color:#b91c1c;opacity:0;pointer-events:none;transition:opacity .12s}
+    .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:22px;background:#111827;color:#fff;padding:10px 14px;border-radius:8px;box-shadow:0 6px 20px rgba(2,6,23,0.18);opacity:0;pointer-events:none;transition:opacity .18s,transform .18s}
+    .toast.show{opacity:1;transform:translateX(-50%) translateY(-6px);pointer-events:auto}
+    @media (max-width:900px){ .track:nth-child(2) .squares{transform:translateX(12px)} .track:nth-child(3) .squares{transform:translateX(24px)} }
+    @media (max-width:600px){:root{--size:30px}.die{width:48px;height:48px}}
+  </style>
+</head>
+<body>
+  <h1>Basit Üç Kişilik Zar Oyunu</h1>
+  <p class="small">Sıra ile: Oyuncu 1 → Oyuncu 2 → Oyuncu 3 (Robot). Her oyuncunun yolu <strong>75</strong> adım. <strong>25</strong>'e tam gelen oyuncu BOMBA! ve sadece o oyuncu 20'ye düşer (her oyuncunun bombası bir kere çalışır). <strong>30</strong>'a tam gelen oyuncuya "EKSTRA ZAR" hakkı verilir. <strong>50</strong>'ye tam gelen oyuncu ise istediği bir oyuncuyu <strong>3</strong> adım geri götürme hakkı kazanır.</p>
+
+  <div class="board">
+    <div class="track" id="track1">
+      <strong>Oyuncu 1</strong>
+      <div class="squares" id="squares1" aria-label="Oyuncu 1 adımları"></div>
+      <div class="small">Pozisyon: <span id="pos1">0</span>/75</div>
+    </div>
+
+    <div class="track" id="track2">
+      <strong>Oyuncu 2</strong>
+      <div class="squares" id="squares2" aria-label="Oyuncu 2 adımları"></div>
+      <div class="small">Pozisyon: <span id="pos2">0</span>/75</div>
+    </div>
+
+    <div class="track" id="track3">
+      <strong>Oyuncu 3 (Robot)</strong>
+      <div class="squares" id="squares3" aria-label="Oyuncu 3 adımları"></div>
+      <div class="small">Pozisyon: <span id="pos3">0</span>/75</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="rollBtn">Zar At</button>
+    <div class="die-wrap">
+      <div class="die" id="die">
+        <div class="pip" data-pos="0"></div>
+        <div class="pip" data-pos="1"></div>
+        <div class="pip" data-pos="2"></div>
+        <div class="pip" data-pos="3"></div>
+        <div class="pip" data-pos="4"></div>
+        <div class="pip" data-pos="5"></div>
+        <div class="pip" data-pos="6"></div>
+        <div class="pip" data-pos="7"></div>
+        <div class="pip" data-pos="8"></div>
+      </div>
+      <div class="small">Son zar: <strong id="lastRoll">-</strong></div>
+    </div>
+    <button id="resetBtn" class="reset">Yeniden Başlat</button>
+    <div class="status" id="turnStatus">Sıra: Oyuncu 1</div>
+  </div>
+
+  <div class="info">
+    <div class="log" id="log"></div>
+  </div>
+
+  <div id="specialModal" style="display:none;position:fixed;inset:0;align-items:center;justify-content:center;pointer-events:none">
+    <div style="pointer-events:auto;background:#fff;padding:14px;border-radius:12px;box-shadow:0 10px 30px rgba(2,6,23,0.12);min-width:240px;text-align:center">
+      <div style="font-weight:800;margin-bottom:8px">50. ADIM - HAKKINIZ VAR</div>
+      <div style="margin-bottom:8px" class="small">İstediğiniz oyuncuyu 3 adım geri gönderin:</div>
+      <div style="display:flex;gap:8px;justify-content:center">
+        <button id="kickP1" style="padding:8px 10px;border-radius:8px">Oyuncu 1</button>
+        <button id="kickP2" style="padding:8px 10px;border-radius:8px">Oyuncu 2</button>
+        <button id="kickP3" style="padding:8px 10px;border-radius:8px">Robot</button>
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:#6b7280">(Seçim yaptıktan sonra oyun devam eder)</div>
+    </div>
+  </div>
+
+  <div class="flash" id="flash">BOMBA!</div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const STEPS = 75;
+    const BOMB_TRIGGER = 25;
+    const BOMB_RESET = 20;
+    const EXTRA_AT = 30; // ekstra zar hakkı noktası
+    const SPECIAL_STEP = 50; // 50. adım: 3 adım geri gönderme hakkı
+
+    let pos = [0,0,0];
+    let turn = 0;
+    let finishedOrder = [];
+    let bombUsed = [false, false, false];
+    let extraUsed = [false, false, false];
+    let specialUsed = [false, false, false];
+    let specialActive = false;
+
+    const playerNames = ['Oyuncu 1', 'Oyuncu 2', 'Robot (Oyuncu 3)'];
+
+    const squares1 = document.getElementById('squares1');
+    const squares2 = document.getElementById('squares2');
+    const squares3 = document.getElementById('squares3');
+    const pos1El = document.getElementById('pos1');
+    const pos2El = document.getElementById('pos2');
+    const pos3El = document.getElementById('pos3');
+    const rollBtn = document.getElementById('rollBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const turnStatus = document.getElementById('turnStatus');
+    const lastRoll = document.getElementById('lastRoll');
+    const log = document.getElementById('log');
+    const die = document.getElementById('die');
+    const pips = die ? Array.from(die.querySelectorAll('.pip')) : [];
+    const flash = document.getElementById('flash');
+    const toastEl = document.getElementById('toast');
+    const specialModal = document.getElementById('specialModal');
+    const kickP1 = document.getElementById('kickP1');
+    const kickP2 = document.getElementById('kickP2');
+    const kickP3 = document.getElementById('kickP3');
+
+    function createBoard(){
+      squares1.innerHTML=''; squares2.innerHTML=''; squares3.innerHTML='';
+      for(let i=1;i<=STEPS;i++){
+        const s1=document.createElement('div'); s1.className='square';
+        const s2=document.createElement('div'); s2.className='square';
+        const s3=document.createElement('div'); s3.className='square';
+        const makeCell = (index)=>{
+          let html = index;
+          html += (index === BOMB_TRIGGER) ? ' <span class="bomb" aria-hidden="true">💣</span>' : '';
+          html += (index === EXTRA_AT) ? ' <span class="extra" aria-hidden="true">🎲</span>' : '';
+          html += (index === SPECIAL_STEP) ? ' <span class="star" aria-hidden="true">⭐</span>' : '';
+          html += '<div class="tokens"></div>';
+          return html;
+        };
+        s1.innerHTML = makeCell(i);
+        s2.innerHTML = makeCell(i);
+        s3.innerHTML = makeCell(i);
+        squares1.appendChild(s1);
+        squares2.appendChild(s2);
+        squares3.appendChild(s3);
+      }
+    }
+
+    function showToast(txt, time = 1600){
+      toastEl.textContent = txt;
+      toastEl.classList.add('show');
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(()=>{toastEl.classList.remove('show');}, time);
+    }
+
+    function clearTokens(){
+      [squares1,squares2,squares3].forEach(board=>{
+        Array.from(board.children).forEach(sq=>{
+          const container = sq.querySelector('.tokens');
+          if(container) container.innerHTML = '';
+        });
+      });
+    }
+
+    function render(){
+      const s1 = squares1.children;
+      const s2 = squares2.children;
+      const s3 = squares3.children;
+      if (s1.length !== STEPS || s2.length !== STEPS || s3.length !== STEPS){
+        createBoard();
+      }
+
+      if(s1[BOMB_TRIGGER-1]){
+        const b = s1[BOMB_TRIGGER-1].querySelector('.bomb'); if(b) b.style.display = bombUsed[0] ? 'none' : '';
+      }
+      if(s2[BOMB_TRIGGER-1]){
+        const b = s2[BOMB_TRIGGER-1].querySelector('.bomb'); if(b) b.style.display = bombUsed[1] ? 'none' : '';
+      }
+      if(s3[BOMB_TRIGGER-1]){
+        const b = s3[BOMB_TRIGGER-1].querySelector('.bomb'); if(b) b.style.display = bombUsed[2] ? 'none' : '';
+      }
+
+      if(s1[EXTRA_AT-1]){
+        const e = s1[EXTRA_AT-1].querySelector('.extra'); if(e) e.style.display = extraUsed[0] ? 'none' : '';
+      }
+      if(s2[EXTRA_AT-1]){
+        const e = s2[EXTRA_AT-1].querySelector('.extra'); if(e) e.style.display = extraUsed[1] ? 'none' : '';
+      }
+      if(s3[EXTRA_AT-1]){
+        const e = s3[EXTRA_AT-1].querySelector('.extra'); if(e) e.style.display = extraUsed[2] ? 'none' : '';
+      }
+
+      if(s1[SPECIAL_STEP-1]){
+        const st = s1[SPECIAL_STEP-1].querySelector('.star'); if(st) st.style.display = specialUsed[0] ? 'none' : '';
+      }
+      if(s2[SPECIAL_STEP-1]){
+        const st = s2[SPECIAL_STEP-1].querySelector('.star'); if(st) st.style.display = specialUsed[1] ? 'none' : '';
+      }
+      if(s3[SPECIAL_STEP-1]){
+        const st = s3[SPECIAL_STEP-1].querySelector('.star'); if(st) st.style.display = specialUsed[2] ? 'none' : '';
+      }
+
+      clearTokens();
+
+      if(pos[0] > 0){
+        const idx = Math.min(pos[0], STEPS) - 1;
+        const cont = s1[idx].querySelector('.tokens');
+        if(cont){ const t = document.createElement('span'); t.className='token p1'; t.title='Oyuncu 1'; cont.appendChild(t); }
+      }
+      if(pos[1] > 0){
+        const idx = Math.min(pos[1], STEPS) - 1;
+        const cont = s2[idx].querySelector('.tokens');
+        if(cont){ const t = document.createElement('span'); t.className='token p2'; t.title='Oyuncu 2'; cont.appendChild(t); }
+      }
+      if(pos[2] > 0){
+        const idx = Math.min(pos[2], STEPS) - 1;
+        const cont = s3[idx].querySelector('.tokens');
+        if(cont){ const t = document.createElement('span'); t.className='token p3'; t.title='Robot (Oyuncu 3)'; cont.appendChild(t); }
+      }
+
+      [s1,s2,s3].forEach((board, pi)=>{
+        const extraCell = board[EXTRA_AT-1]; if(extraCell) extraCell.style.boxShadow = (pos[pi]===EXTRA_AT) ? '0 0 8px rgba(59,130,246,0.35)' : '';
+        const specialCell = board[SPECIAL_STEP-1]; if(specialCell) specialCell.style.boxShadow = (pos[pi]===SPECIAL_STEP) ? '0 0 8px rgba(245,158,11,0.28)' : '';
+      });
+
+      pos1El.textContent = pos[0];
+      pos2El.textContent = pos[1];
+      pos3El.textContent = pos[2];
+
+      if(finishedOrder.length === 3){
+        turnStatus.textContent = 'Oyun bitti — Sıralama: ' + finishedOrder.map((i,idx)=>`${idx+1}. ${playerNames[i]}`).join(' | ');
+      } else {
+        if(finishedOrder.includes(turn)){
+          turn = nextActiveTurn(turn);
+        }
+        turnStatus.textContent = 'Sıra: ' + playerNames[turn] + (turn===2 ? ' (Robot)' : '');
+      }
+
+      rollBtn.disabled = (finishedOrder.length === 3) || (turn === 2);
+    }
+
+    function logAdd(txt){ const p = document.createElement('div'); p.textContent = txt; log.prepend(p); }
+
+    function rollDie(){ return Math.floor(Math.random()*6)+1; }
+    const faceMap = {1:[4],2:[0,8],3:[0,4,8],4:[0,2,6,8],5:[0,2,4,6,8],6:[0,2,3,5,6,8]};
+    function showDieFace(n){ if(!pips||!pips.length) return; pips.forEach(p=>p.classList.remove('show')); (faceMap[n]||[]).forEach(i=>pips[i].classList.add('show')); }
+
+    let audioCtx = null;
+    function ensureAudio(){ try{ if(!window.AudioContext && !window.webkitAudioContext) return null; if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); return audioCtx; }catch(e){ return null; } }
+
+    function playDieSound(d=140){ try{ const ctx = ensureAudio(); if(!ctx) return; const now = ctx.currentTime; const bufferSize = Math.max(128, Math.floor(ctx.sampleRate*(d/1000))); const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate); const data = buffer.getChannelData(0); for(let i=0;i<data.length;i++) data[i] = (Math.random()*2-1)*(1 - i/data.length); const noise = ctx.createBufferSource(); noise.buffer = buffer; const noiseFilter = ctx.createBiquadFilter(); noiseFilter.type='bandpass'; noiseFilter.frequency.value = 1500; const gain = ctx.createGain(); gain.gain.setValueAtTime(0.0001, now); gain.gain.exponentialRampToValueAtTime(0.8, now + 0.01); gain.gain.exponentialRampToValueAtTime(0.001, now + d/1000); noise.connect(noiseFilter); noiseFilter.connect(gain); gain.connect(ctx.destination); noise.start(now); noise.stop(now + d/1000 + 0.02); const osc = ctx.createOscillator(); const ogain = ctx.createGain(); osc.type='sine'; osc.frequency.setValueAtTime(120, now); ogain.gain.setValueAtTime(0.0001, now); ogain.gain.exponentialRampToValueAtTime(0.4, now + 0.01); ogain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08); osc.connect(ogain); ogain.connect(ctx.destination); osc.start(now); osc.stop(now + 0.09); }catch(e){} }
+
+    function playBombSound(){ try{ const ctx = ensureAudio(); if(!ctx) return; const now = ctx.currentTime; const bass = ctx.createOscillator(); const bgain = ctx.createGain(); bass.type = 'sine'; bass.frequency.setValueAtTime(80, now); bgain.gain.setValueAtTime(0.0001, now); bgain.gain.exponentialRampToValueAtTime(1, now + 0.02); bgain.gain.exponentialRampToValueAtTime(0.001, now + 0.4); bass.connect(bgain); bgain.connect(ctx.destination); bass.start(now); bass.stop(now + 0.45); const bufferSize = Math.max(64, Math.floor(ctx.sampleRate * 0.12)); const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate); const data = buffer.getChannelData(0); for(let i=0;i<data.length;i++) data[i] = (Math.random()*2-1)*(1 - i/data.length); const noise = ctx.createBufferSource(); noise.buffer = buffer; const filter = ctx.createBiquadFilter(); filter.type = 'highpass'; filter.frequency.value = 1200; const ngain = ctx.createGain(); ngain.gain.setValueAtTime(0.0001, now); ngain.gain.exponentialRampToValueAtTime(0.8, now + 0.01); ngain.gain.exponentialRampToValueAtTime(0.001, now + 0.2); noise.connect(filter); filter.connect(ngain); ngain.connect(ctx.destination); noise.start(now + 0.02); noise.stop(now + 0.12 + 0.02); }catch(e){} }
+
+    function playExtraSound(){ try{ const ctx = ensureAudio(); if(!ctx) return; const now = ctx.currentTime; const osc = ctx.createOscillator(); const ogain = ctx.createGain(); osc.type='triangle'; osc.frequency.setValueAtTime(520, now); ogain.gain.setValueAtTime(0.0001, now); ogain.gain.exponentialRampToValueAtTime(0.6, now + 0.01); ogain.gain.exponentialRampToValueAtTime(0.0001, now + 0.25); osc.connect(ogain); ogain.connect(ctx.destination); osc.start(now); osc.stop(now + 0.28); }catch(e){} }
+
+    function playSpecialSound(){ try{ const ctx = ensureAudio(); if(!ctx) return; const now = ctx.currentTime; const o1 = ctx.createOscillator(); const o2 = ctx.createOscillator(); const g = ctx.createGain(); o1.type='sine'; o2.type='sawtooth'; o1.frequency.setValueAtTime(440, now); o2.frequency.setValueAtTime(660, now); g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(0.8, now + 0.01); g.gain.exponentialRampToValueAtTime(0.001, now + 0.4); o1.connect(g); o2.connect(g); g.connect(ctx.destination); o1.start(now); o2.start(now); o1.stop(now + 0.18); o2.stop(now + 0.18); }catch(e){} }
+
+    function flashBomb(){ flash.style.opacity = '1'; setTimeout(()=>{ flash.style.opacity = '0'; }, 480); }
+
+    function doBombEffect(playerIndex){
+      playBombSound();
+      flashBomb();
+      pos[playerIndex] = BOMB_RESET;
+      bombUsed[playerIndex] = true;
+      logAdd(`${playerIndex===2 ? 'Robot (Oyuncu 3)' : 'Oyuncu ' + (playerIndex+1)} BOMBA! 25'e geldi — geri 20'ye düştü`);
+      showToast(`${playerIndex===2 ? 'Robot (Oyuncu 3)' : 'Oyuncu ' + (playerIndex+1)} BOMBA! 20'e düştü`, 1800);
+      render();
+    }
+
+    function showFinalRanking(){
+      const orderNames = finishedOrder.map((i,idx)=>`${idx+1}. ${playerNames[i]}`);
+      const msg = 'Final Sıralama:\n' + orderNames.join('\n');
+      logAdd('*** OYUN BİTTİ — Final sıralama: ' + orderNames.join(' | ') + ' ***');
+      alert(msg);
+    }
+
+    function nextActiveTurn(from){
+      for(let i=1;i<=3;i++){
+        const t = (from + i) % 3;
+        if(!finishedOrder.includes(t)) return t;
+      }
+      return from;
+    }
+
+    function showExtraBanner(){
+      const b = document.createElement('div');
+      b.textContent = 'EKSTRA ZAR!';
+      b.style.position = 'fixed'; b.style.left='50%'; b.style.top='22%'; b.style.transform='translateX(-50%)';
+      b.style.padding='12px 18px'; b.style.background='#059669'; b.style.color='#fff'; b.style.fontWeight='800'; b.style.borderRadius='10px'; b.style.boxShadow='0 10px 30px rgba(5,150,105,0.12)';
+      document.body.appendChild(b);
+      setTimeout(()=>{ b.remove(); }, 1200);
+    }
+
+    function doRoll(r){
+      if(finishedOrder.length === 3) return;
+
+      if(finishedOrder.includes(turn)){
+        turn = nextActiveTurn(turn);
+      }
+
+      const value = (typeof r === 'number') ? r : rollDie();
+      lastRoll.textContent = value;
+      const newPos = pos[turn] + value;
+
+      if(newPos >= STEPS && !finishedOrder.includes(turn)){
+        pos[turn] = STEPS;
+        showDieFace(value);
+        finishedOrder.push(turn);
+        logAdd(`${playerNames[turn]} zar: ${value} — BİTTİ! (Sıra: ${finishedOrder.length})`);
+        showToast(`${playerNames[turn]} ${finishedOrder.length}. oldu!`, 1800);
+        render();
+
+        // Eğer şimdi 3 olduysa bitir
+        if(finishedOrder.length === 3){
+          rollBtn.disabled = true;
+          setTimeout(()=>{ showFinalRanking(); }, 300);
+          return;
+        }
+
+        // Eğer 2 olduysa kalan oyuncuyu otomatik 3. yap ve bitir (kalan oyuncu zar atmaya devam etmesin)
+        if(finishedOrder.length === 2){
+          const remaining = [0,1,2].find(i => !finishedOrder.includes(i));
+          finishedOrder.push(remaining);
+          // render ve bitir
+          render();
+          rollBtn.disabled = true;
+          setTimeout(()=>{ showFinalRanking(); }, 300);
+          return;
+        }
+
+        // normal şekilde sıraya geç
+        turn = nextActiveTurn(turn);
+        if(!finishedOrder.includes(turn) && turn === 2 && finishedOrder.length < 3){
+          setTimeout(()=>{ if(finishedOrder.length < 3 && !finishedOrder.includes(turn)) { showToast('Robot 2 saniye sonra atacak',1200); setTimeout(()=>{ if(finishedOrder.length < 3 && !finishedOrder.includes(turn)) robotAutoRoll(); },1200); } }, 1200);
+        } else {
+          render();
+        }
+        return;
+      }
+
+      if(newPos === BOMB_TRIGGER && !bombUsed[turn] && !finishedOrder.includes(turn)){
+        showDieFace(value);
+        setTimeout(()=>{
+          doBombEffect(turn);
+          // sırayı ilerlet
+          turn = nextActiveTurn(turn);
+          render();
+          showToast(`Sıra: ${playerNames[turn]}${turn===2 ? ' (Robot)' : ''}`, 1400);
+          if(!finishedOrder.includes(turn) && turn === 2 && finishedOrder.length < 3){
+            setTimeout(()=>{ if(finishedOrder.length < 3 && !finishedOrder.includes(turn)) { showToast('Robot 2 saniye sonra atacak',1200); setTimeout(()=>{ if(finishedOrder.length < 3 && !finishedOrder.includes(turn)) robotAutoRoll(); },1200); } }, 2000);
+          }
+        }, 180);
+        return;
+      }
+
+      pos[turn] = newPos;
+
+      if(pos[turn] === EXTRA_AT && !extraUsed[turn] && !finishedOrder.includes(turn)){
+        extraUsed[turn] = true;
+        showDieFace(value);
+        logAdd(`${playerNames[turn]} zar: ${value} — ${EXTRA_AT}'e geldi, EKSTRA ZAR!`);
+        showToast('EKSTRA ZAR!', 1400);
+        playExtraSound();
+        showExtraBanner();
+        render();
+        // Bekleme süresi: 3.5 saniye sonra ekstra zar atılacak
+        setTimeout(()=>{
+          if(finishedOrder.length >= 3) return;
+          showToast('Ekstra zar 3.5 saniye sonra atılıyor...', 1200);
+          if(turn === 2){
+            // robot ise robotAutoRoll (robot da beklemeyi zaten gördü)
+            setTimeout(()=>{ if(finishedOrder.length < 3 && !finishedOrder.includes(turn)) robotAutoRoll(); }, 1200);
+          } else {
+            rollBtn.disabled = true;
+            rollAnimation((r2)=>{
+              if(finishedOrder.length < 3 && !finishedOrder.includes(turn)){
+                doRoll(r2);
+              }
+              if(finishedOrder.length < 3 && !finishedOrder.includes(turn)) rollBtn.disabled = false;
+            });
+          }
+        }, 3500);
+        return;
+      }
+
+      if(pos[turn] === SPECIAL_STEP && !specialUsed[turn] && !specialActive && !finishedOrder.includes(turn)){
+        specialUsed[turn] = true;
+        specialActive = true;
+        showDieFace(value);
+        logAdd(`${playerNames[turn]} zar: ${value} — 50'ye geldi, 3 adım geri gönderme hakkı kazandı!`);
+        playSpecialSound();
+        render();
+
+        const onChoice = (targetIdx)=>{
+          pos[targetIdx] = Math.max(0, pos[targetIdx] - 3);
+          logAdd(`${playerNames[turn]} 50'ye geldi ve ${playerNames[targetIdx]} ${3} adım geri gönderildi (yeni pozisyon: ${pos[targetIdx]})`);
+          playExtraSound();
+          specialModal.style.display = 'none';
+          specialModal.style.pointerEvents = 'none';
+          specialActive = false;
+          turn = nextActiveTurn(turn);
+          render();
+          showToast(`Sıra: ${playerNames[turn]}${turn===2 ? ' (Robot)' : ''}`, 1200);
+          if(!finishedOrder.includes(turn) && turn === 2 && finishedOrder.length < 3){ setTimeout(()=>{ if(finishedOrder.length < 3 && !finishedOrder.includes(turn)) { showToast('Robot 2 saniye sonra atacak',1200); setTimeout(()=>{ if(finishedOrder.length < 3 && !finishedOrder.includes(turn)) robotAutoRoll(); },1200); } }, 1200); }
+        };
+
+        kickP1.onclick = ()=> onChoice(0);
+        kickP2.onclick = ()=> onChoice(1);
+        kickP3.onclick = ()=> onChoice(2);
+
+        if(turn === 2){
+          specialModal.style.display = 'none';
+          specialModal.style.pointerEvents = 'none';
+          rollBtn.disabled = true;
+          setTimeout(()=>{
+            let rand;
+            if(finishedOrder.includes(0) && !finishedOrder.includes(1)) rand = 1;
+            else if(finishedOrder.includes(1) && !finishedOrder.includes(0)) rand = 0;
+            else rand = Math.random() < 0.5 ? 0 : 1;
+            onChoice(rand);
+          }, 800);
+        } else {
+          specialModal.style.display = 'flex';
+          specialModal.style.pointerEvents = 'auto';
+          rollBtn.disabled = true;
+        }
+        return;
+      }
+
+      logAdd(`${playerNames[turn]} zar: ${value} — yeni pozisyon: ${pos[turn]}`);
+      turn = nextActiveTurn(turn);
+      render();
+      showToast(`Sıra: ${playerNames[turn]}${turn===2 ? ' (Robot)' : ''}`, 1200);
+
+      if(!finishedOrder.includes(turn) && turn === 2 && finishedOrder.length < 3){
+        setTimeout(()=>{ if(finishedOrder.length < 3 && !finishedOrder.includes(turn)) { showToast('Robot 2 saniye sonra atacak',1200); setTimeout(()=>{ if(finishedOrder.length < 3 && !finishedOrder.includes(turn)) robotAutoRoll(); },1200); } }, 2000);
+      }
+    }
+
+    function rollAnimation(finalCallback){
+      const ctx = ensureAudio(); if(ctx && ctx.state === 'suspended'){ ctx.resume().catch(()=>{}); }
+      let ticks = 8; lastRoll.textContent = '...';
+      const finalRoll = rollDie();
+      const intv = setInterval(()=>{
+        const face = Math.floor(Math.random()*6)+1;
+        showDieFace(face);
+        playDieSound(60);
+        lastRoll.textContent = face;
+        ticks--;
+        if(ticks <= 0){
+          clearInterval(intv);
+          showDieFace(finalRoll);
+          lastRoll.textContent = finalRoll;
+          if(finalCallback) finalCallback(finalRoll);
+        }
+      }, 80);
+    }
+
+    function robotAutoRoll(){
+      rollBtn.disabled = true;
+      rollAnimation((r)=>{
+        if(finishedOrder.length < 3 && !finishedOrder.includes(turn)){
+          doRoll(r);
+        }
+        if(finishedOrder.length < 3 && !finishedOrder.includes(turn)) rollBtn.disabled = false;
+      });
+    }
+
+    rollBtn.addEventListener('click', ()=>{
+      if(finishedOrder.length === 3) return;
+      if(turn === 2) return;
+      rollBtn.disabled = true;
+      rollAnimation((r)=>{
+        if(finishedOrder.length < 3 && !finishedOrder.includes(turn)){
+          doRoll(r);
+        }
+        if(finishedOrder.length < 3 && !finishedOrder.includes(turn)) rollBtn.disabled = false;
+      });
+    });
+
+    resetBtn.addEventListener('click', ()=>{
+      pos = [0,0,0]; turn = 0; finishedOrder = [];
+      bombUsed = [false,false,false]; specialActive = false; extraUsed = [false,false,false]; specialUsed = [false,false,false]; lastRoll.textContent = '-'; log.innerHTML = '';
+      if(pips && pips.length) pips.forEach(p=>p.classList.remove('show'));
+      specialModal.style.display = 'none'; specialModal.style.pointerEvents = 'none';
+      createBoard(); render(); showToast('Oyun sıfırlandı, bombalar resetlendi', 1400);
+    });
+
+    createBoard(); render(); showToast('Sıra: Oyuncu 1', 1200);
+    document.addEventListener('keydown', (e)=>{ if(e.key === 'Enter' && finishedOrder.length < 3 && turn !== 2) rollBtn.click(); });
+  </script>
+</body>
+</html>
